@@ -30,7 +30,7 @@ The LiDAR Dome 360 App is a powerful tool designed for processing and visualizin
 ### Rapid Scanning
 •	For rapid scanning, you might set the RPM to 30, resulting in a scan every 1.5 seconds. For example, a 1-minute capture at 30 RPM with a duration value of 15 and a delay of 10 would yield 38 separate point clouds.
 ## Installation and Setup
-I have created a Gui and a standalone application for it so you do not need MATLAB if you use the installer. You will need to download the MATLAB 2023a Runtime which is freely available at MathWorks: https://www.mathworks.com/products/compiler/matlab-runtime.html The Stand alone was written to run on a Windows 64 machine and must be installed to C:\Lidar Dome 360 or it will not work. You can change this directory in the MATLAB files and recompile if you would like to instal somewhere else.
+I have created a Gui and a standalone application for it so you do not need MATLAB if you use the installer. You will need to download the MATLAB 2023a Runtime which is freely available at MathWorks: https://www.mathworks.com/products/compiler/matlab-runtime.html The Stand alone was written to run on a Windows 64 machine and must be installed to C:\LidarDome360 or it will not work. You can change this directory in the MATLAB files and recompile if you would like to instal somewhere else.
 
 ## Contributing
 Contributions to the LiDAR Dome 360 App are welcome! Special thanks to Jason Bula for he started this journey when he produced a paper on creating a low-cost TLS scanner. You can find his GitHub profile here: https://github.com/jason-bula/velodyne_tls
