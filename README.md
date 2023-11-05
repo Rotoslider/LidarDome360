@@ -36,3 +36,5 @@ I have created a Gui and a standalone application for it so you do not need MATL
 Contributions to the LiDAR Dome 360 App are welcome! Special thanks to Jason Bula for he started this journey when he produced a paper on creating a low-cost TLS scanner. You can find his GitHub profile here: https://github.com/jason-bula/velodyne_tls
 ## License
 This project is licensed under the MIT License, which allows for open and free use, 
+
+![TLS Touch and Mini Spinny scanners (4)](https://github.com/Rotoslider/LidarDome360/assets/15005663/7e61e6d1-823c-4b54-9a8a-022559970fae)
