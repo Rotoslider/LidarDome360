@@ -1,5 +1,5 @@
 
-function processLidarData(app, cyc, pos, pos2, puck, spinDirection, times, angle, noise, first, alpha_1, alpha_2, gridStep, R, input_file_name, calibFileName)
+function processLidarData(app, cyc, pos, pos2, puck, spinDirection, times, angle, noise, export, first, alpha_1, alpha_2, gridStep, R, input_file_name, calibFileName)
 
 %% Directory Management
 %load('C:\Lidar Dome 360\application\settings.mat')
@@ -448,6 +448,8 @@ for iii = 1 : 10
     Y_ref = 0;
     Z_ref = 0;
     int_ref = 0;
+
+    
 end
 
 %% Reconstruction of the point cloud
@@ -496,6 +498,22 @@ else
     PC_Final1 = pctransform(PC_Final1, affinetform3d(RotX'));
 end
 
+%% Point cloud export individual files
+if pos2 == 1 && export == 1
+
+  disp('Exporting individual files...');
+
+    % Construct file name
+    filename = sprintf('%s_%s_%d.ply', filename_cycle_prefix, output_file_name, i);
+
+    % Save point cloud
+    pcwrite(PC_Final1,fullfile(output, filename), 'PLYFormat','binary');
+end
+
+if export ~= 1
+   disp('Individual files not saved'); 
+end
+
 %% Point cloud export Merged Files
 
 % Defining output document names WITH adjusted filename_prefix
@@ -528,7 +546,8 @@ end
 if pos2 == 0 && (iiii == 1 || iiii == 16 || iiii == 32) || ...
    pos2 == 2 && (iiii == 8 || iiii == 16)
     % Define the filename
-    filename = sprintf('%s_%d.ply', output_file_name, iiii);
+    filename = sprintf('%s_%s_%d.ply', filename_cycle_prefix, output_file_name, iiii);
+    %filename = sprintf('%s_%d.ply', output_file_name, iiii);
     % Save the current band
     pcwrite(PC_Final1, fullfile(output, filename), 'PLYFormat', 'binary');
 end
@@ -601,7 +620,7 @@ if length(pointCloudsForCurrentCycle) > 1
     drawnow; % Force immediate update of the figure
     end
 
-    disp(['Merged File Saved: ', merged_filename]);
+    disp(['Merged File is Saved: ', merged_filename]);
     app.PcapFileEditField.Value = ['Merged File Saved: ', merged_filename];
 
     % Optionally add a pause or wait for a keypress if you want to manually advance through visualizations
