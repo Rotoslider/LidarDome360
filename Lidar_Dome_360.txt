@@ -1,0 +1,584 @@
+classdef Lidar_Dome_360 < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        LidarDomeUIFigure          matlab.ui.Figure
+        ExportDropDown             matlab.ui.control.DropDown
+        ExportDropDownLabel        matlab.ui.control.Label
+        deNoiseDropDown            matlab.ui.control.DropDown
+        deNoiseDropDownLabel       matlab.ui.control.Label
+        DisplayDropDown            matlab.ui.control.DropDown
+        DisplayDropDownLabel       matlab.ui.control.Label
+        StopButton                 matlab.ui.control.Button
+        LoadJSONfileButton         matlab.ui.control.Button
+        DirectionDropDown          matlab.ui.control.DropDown
+        DirectionDropDownLabel     matlab.ui.control.Label
+        SelectLidarDropDown        matlab.ui.control.DropDown
+        SelectLidarFirstLabel      matlab.ui.control.Label
+        LidarDome360Label          matlab.ui.control.Label
+        ProgressField              matlab.ui.control.EditField
+        RunButton                  matlab.ui.control.Button
+        SubsampleEditField         matlab.ui.control.NumericEditField
+        SubsampleEditFieldLabel    matlab.ui.control.Label
+        BandstoKeepDropDown        matlab.ui.control.DropDown
+        BandstoKeepDropDownLabel   matlab.ui.control.Label
+        PointstoKeepDropDown       matlab.ui.control.DropDown
+        PointstoKeepDropDownLabel  matlab.ui.control.Label
+        PcapFileEditField          matlab.ui.control.EditField
+        DelayEditField             matlab.ui.control.NumericEditField
+        DelayEditFieldLabel        matlab.ui.control.Label
+        AngleEditField             matlab.ui.control.NumericEditField
+        AngleEditFieldLabel        matlab.ui.control.Label
+        DurationEditField_2        matlab.ui.control.NumericEditField
+        DurationEditField_2Label   matlab.ui.control.Label
+        LoadPCAPfileButton         matlab.ui.control.Button
+        offsetrEditField           matlab.ui.control.NumericEditField
+        offsetrEditFieldLabel      matlab.ui.control.Label
+        alpha2EditField            matlab.ui.control.NumericEditField
+        alpha2EditFieldLabel       matlab.ui.control.Label
+        alpha1EditField            matlab.ui.control.NumericEditField
+        alpha1EditFieldLabel       matlab.ui.control.Label
+        ScanSettingsLabel          matlab.ui.control.Label
+        PCAPtoPointCloudLabel      matlab.ui.control.Label
+        CalibrationSettingsLabel   matlab.ui.control.Label
+        ExportParametersLabel      matlab.ui.control.Label
+    end
+
+    
+    properties (Access = private)
+        input % Description
+        input_file_name % Description
+        calibFileName % Description
+        result % Description
+        times % Description
+        angle % Description
+        first % Description
+        pos % Description
+        pos2 % Description
+        gridStep % Description
+        alpha_1 % Description
+        alpha_2 % Description
+        R % Description
+        puck % Description
+        spinDirection % Description
+        noise % Description
+        export % Description
+        
+        usableTimes % Description
+        totalScanFrames % Description
+        
+    end
+    
+    properties (Access = public)
+        stopProcessing = false; % Description
+        cyc % Description
+    end
+    
+    methods (Access = private)
+        
+        function totalFrames = GetTotalScanFrames(app, input_file_name, puck, calibFileName)
+            switch puck
+                case 1
+                    % VLP16
+                    veloReader = velodyneFileReader(input_file_name, 'VLP16');
+                    totalFrames = veloReader.NumberOfFrames; % count frames of scan
+                case 2
+                    % VLP32C
+                    veloReader = velodyneFileReader(input_file_name, "VLP32C");
+                    totalFrames = veloReader.NumberOfFrames; % count frames of scan
+                case 3
+                    % OUSTER
+                    ousterReader = ousterFileReader(input_file_name, calibFileName);
+                    totalFrames = ousterReader.NumberOfFrames; % count frames of scan for Ouster
+                otherwise
+                    error('Invalid puck value. Please use 1 for VLP16, 2 for VLP32C, or 3 for OUSTER.');
+            end
+        end
+
+
+       
+    end
+
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function startupFcn(app)
+
+            app.stopProcessing = false;
+
+            my_settings = ("C:\LidarDome360\application\settings.mat");
+            disp(['Settings file path: ', my_settings]);
+            
+            % Check if the file exists before loading
+            if isfile(my_settings)
+                disp('The settings.mat file exists. Loading...');
+                % Load the settings
+                data = load(my_settings); 
+                    app.totalScanFrames = data.totalScanFrames;
+                disp('The settings.mat file has been loaded successfully.');
+            else
+                disp('The settings.mat file does NOT exist.');
+            end
+
+            if isfield(data, 'angle')
+                app.AngleEditField.Value = data.angle;
+            end
+
+            if isfield(data, 'times')
+                app.DurationEditField_2.Value = data.times;
+            end
+
+            if isfield(data, 'first')
+                app.DelayEditField.Value = data.first;
+            end
+
+            if isfield(data, 'alpha_1')
+                app.alpha1EditField.Value = data.alpha_1;
+            end
+
+            if isfield(data, 'alpha_2')
+                app.alpha2EditField.Value = data.alpha_2;
+            end
+
+            if isfield(data, 'gridStep')
+                app.SubsampleEditField.Value = data.gridStep;
+            end
+
+            if isfield(data, 'R')
+                app.offsetrEditField.Value = data.R;
+            end
+            % Default puck value
+            app.puck = 2; % Default to VLP32, for example
+            app.ProgressField.Value = "Select Lidar unit";
+            drawnow;
+
+        end
+
+        % Button pushed function: LoadPCAPfileButton
+        function LoadPCAPfileButtonPushed(app, event)
+            [file, path] = uigetfile('*.pcap');
+            if isequal(file, 0)
+                disp('User selected Cancel');
+                return;
+            end
+            app.input_file_name = fullfile(path, file);
+            app.PcapFileEditField.Value = app.input_file_name;
+            % Extract the totalScanFrames from the .pcap file
+            app.totalScanFrames = app.GetTotalScanFrames(app.input_file_name, app.puck, app.calibFileName);
+
+            app.ProgressField.Value = "Enter Settings and Press Run";
+            drawnow;
+            figure(app.LidarDomeUIFigure);
+
+        end
+
+        % Button pushed function: RunButton
+        function RunButtonPushed(app, event)
+            app.stopProcessing = false; % Reset the stop flag
+            app.PcapFileEditField.Value = app.input_file_name;
+            app.ProgressField.Value = "Processing PCAP File, Please Wait";
+            drawnow;
+            switch app.PointstoKeepDropDown.Value
+             case 'All'
+                 app.pos = 0;
+             case 'Positive'
+                 app.pos = 1;
+             case 'Negative'
+                 app.pos = 2;
+             end
+         switch app.BandstoKeepDropDown.Value
+             case 'All'
+                 app.pos2 = 1;
+             case 'First,Last'
+                 app.pos2 = 0;
+             case 'Middle'
+                 app.pos2 = 2;
+         end
+         switch app.SelectLidarDropDown.Value
+             case 'VLP16'
+                 app.puck = 1;
+             case 'VLP32C'
+                 app.puck = 2;
+             case 'OUSTER'
+                 app.puck = 3;
+         end
+         switch app.DirectionDropDown.Value
+             case 'Clockwise'
+                 app.spinDirection = -1;
+             case 'Counterclockwise'
+                 app.spinDirection = 1;
+         end
+         switch app.DisplayDropDown.Value
+             case 'All Cycles'
+                 app.cyc = 2;
+             case 'First Cycle'
+                 app.cyc = 1;
+             case 'None'
+                 app.cyc = 0;
+         end
+         switch app.deNoiseDropDown.Value
+             case 'Low'
+                 app.noise = 1;
+             case 'High'
+                 app.noise = 2;
+             case 'None'
+                 app.noise = 0;
+         end
+         switch app.ExportDropDown.Value
+             case 'Singles'
+                 app.export = 1;
+             case 'Merged'
+                 app.export = 2;
+         end 
+         app.times = app.DurationEditField_2.Value;
+         app.angle = app.AngleEditField.Value;
+         app.first = app.DelayEditField.Value;
+         app.alpha_1 = app.alpha1EditField.Value;
+         app.alpha_2 = app.alpha2EditField.Value;
+         app.gridStep = app.SubsampleEditField.Value;
+         app.R = app.offsetrEditField.Value;
+         app.input_file_name = [app.input_file_name];
+         app.calibFileName = [app.calibFileName];
+
+         
+         % Call the function
+         try
+             processLidarData(app, app.cyc, app.pos, app.pos2, app.puck, app.spinDirection, app.times, app.angle, app.noise, app.export, app.first, app.alpha_1, app.alpha_2, app.gridStep, app.R, app.input_file_name, app.calibFileName);
+
+         catch ME
+             uialert(app.LidarDomeUIFigure, ['Error when running script: ', ME.message], 'Error');
+         end
+
+         % Check if 'times' exceeds the usable times
+         if app.times > (app.totalScanFrames - app.first)
+             uialert(app.LidarDomeUIFigure, sprintf('Entered time value is too large. It has been replaced with the maximum allowed Time of %d. Correct the Scan Time for your next run', (app.totalScanFrames - app.first)), 'Time Error');
+             app.DurationEditField_2.Value = (app.totalScanFrames - app.first);  % Update the UI field value
+
+         end
+         if ~app.stopProcessing
+             app.ProgressField.Value = 'Processing Done';
+         end
+         app.stopProcessing = false;  % Reset the flag for the next run
+         drawnow;
+         
+
+        end
+
+        % Button pushed function: LoadJSONfileButton
+        function LoadJSONfileButtonPushed(app, event)
+           [file,path] = uigetfile('*.json');
+            app.calibFileName = [fullfile(path,file)];
+            app.PcapFileEditField.Value = app.calibFileName;
+            app.ProgressField.Value = "Load Pcap file";
+            drawnow;
+        end
+
+        % Button pushed function: StopButton
+        function StopButtonPushed(app, event)
+            app.stopProcessing = true;
+
+        end
+
+        % Value changed function: SelectLidarDropDown
+        function LidarDropDownValueChanged(app, event)
+            selectedValue = app.SelectLidarDropDown.Value;
+            switch selectedValue
+                case 'VLP16'
+                    app.puck = 1;
+                case 'VLP32C'
+                    app.puck = 2;
+                case 'OUSTER'
+                    app.puck = 3;
+                otherwise
+                    disp('Unexpected Lidar type selected.');
+            end
+            app.ProgressField.Value = "Load JSON or PCAP File";
+            drawnow;
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create LidarDomeUIFigure and hide until all components are created
+            app.LidarDomeUIFigure = uifigure('Visible', 'off');
+            app.LidarDomeUIFigure.Position = [100 100 640 456];
+            app.LidarDomeUIFigure.Name = 'PCAP to Point Cloud Converter';
+
+            % Create ExportParametersLabel
+            app.ExportParametersLabel = uilabel(app.LidarDomeUIFigure);
+            app.ExportParametersLabel.Position = [451 219 106 22];
+            app.ExportParametersLabel.Text = 'Export Parameters';
+
+            % Create CalibrationSettingsLabel
+            app.CalibrationSettingsLabel = uilabel(app.LidarDomeUIFigure);
+            app.CalibrationSettingsLabel.Position = [267 219 110 22];
+            app.CalibrationSettingsLabel.Text = 'Calibration Settings';
+
+            % Create PCAPtoPointCloudLabel
+            app.PCAPtoPointCloudLabel = uilabel(app.LidarDomeUIFigure);
+            app.PCAPtoPointCloudLabel.HorizontalAlignment = 'center';
+            app.PCAPtoPointCloudLabel.FontSize = 16;
+            app.PCAPtoPointCloudLabel.FontWeight = 'bold';
+            app.PCAPtoPointCloudLabel.Position = [251 384 163 22];
+            app.PCAPtoPointCloudLabel.Text = 'PCAP to Point Cloud';
+
+            % Create ScanSettingsLabel
+            app.ScanSettingsLabel = uilabel(app.LidarDomeUIFigure);
+            app.ScanSettingsLabel.Position = [113 219 80 22];
+            app.ScanSettingsLabel.Text = 'Scan Settings';
+
+            % Create alpha1EditFieldLabel
+            app.alpha1EditFieldLabel = uilabel(app.LidarDomeUIFigure);
+            app.alpha1EditFieldLabel.HorizontalAlignment = 'right';
+            app.alpha1EditFieldLabel.Position = [223 184 45 22];
+            app.alpha1EditFieldLabel.Text = 'alpha 1';
+
+            % Create alpha1EditField
+            app.alpha1EditField = uieditfield(app.LidarDomeUIFigure, 'numeric');
+            app.alpha1EditField.Tooltip = {'collimation axis'};
+            app.alpha1EditField.Position = [283 184 54 22];
+
+            % Create alpha2EditFieldLabel
+            app.alpha2EditFieldLabel = uilabel(app.LidarDomeUIFigure);
+            app.alpha2EditFieldLabel.HorizontalAlignment = 'right';
+            app.alpha2EditFieldLabel.Position = [223 150 45 22];
+            app.alpha2EditFieldLabel.Text = 'alpha 2';
+
+            % Create alpha2EditField
+            app.alpha2EditField = uieditfield(app.LidarDomeUIFigure, 'numeric');
+            app.alpha2EditField.Tooltip = {'tilting axis'};
+            app.alpha2EditField.Position = [283 150 54 22];
+
+            % Create offsetrEditFieldLabel
+            app.offsetrEditFieldLabel = uilabel(app.LidarDomeUIFigure);
+            app.offsetrEditFieldLabel.HorizontalAlignment = 'right';
+            app.offsetrEditFieldLabel.Position = [223 111 45 22];
+            app.offsetrEditFieldLabel.Text = 'offset r';
+
+            % Create offsetrEditField
+            app.offsetrEditField = uieditfield(app.LidarDomeUIFigure, 'numeric');
+            app.offsetrEditField.Tooltip = {'distance between the arm and the optical center of the LiDAR in [m]'};
+            app.offsetrEditField.Position = [283 111 54 22];
+
+            % Create LoadPCAPfileButton
+            app.LoadPCAPfileButton = uibutton(app.LidarDomeUIFigure, 'push');
+            app.LoadPCAPfileButton.ButtonPushedFcn = createCallbackFcn(app, @LoadPCAPfileButtonPushed, true);
+            app.LoadPCAPfileButton.Tooltip = {'Select Ouster or Velodyne Pcap'};
+            app.LoadPCAPfileButton.Position = [92 303 100 22];
+            app.LoadPCAPfileButton.Text = 'Load PCAP file';
+
+            % Create DurationEditField_2Label
+            app.DurationEditField_2Label = uilabel(app.LidarDomeUIFigure);
+            app.DurationEditField_2Label.HorizontalAlignment = 'right';
+            app.DurationEditField_2Label.Position = [44 184 52 22];
+            app.DurationEditField_2Label.Text = 'Duration';
+
+            % Create DurationEditField_2
+            app.DurationEditField_2 = uieditfield(app.LidarDomeUIFigure, 'numeric');
+            app.DurationEditField_2.Tooltip = {'Scan duration in tenths of a second'};
+            app.DurationEditField_2.Position = [110 184 54 22];
+            app.DurationEditField_2.Value = 3630;
+
+            % Create AngleEditFieldLabel
+            app.AngleEditFieldLabel = uilabel(app.LidarDomeUIFigure);
+            app.AngleEditFieldLabel.HorizontalAlignment = 'right';
+            app.AngleEditFieldLabel.Position = [44 150 52 22];
+            app.AngleEditFieldLabel.Text = 'Angle';
+
+            % Create AngleEditField
+            app.AngleEditField = uieditfield(app.LidarDomeUIFigure, 'numeric');
+            app.AngleEditField.Tooltip = {'LiDAR rotation angle'};
+            app.AngleEditField.Position = [110 150 54 22];
+
+            % Create DelayEditFieldLabel
+            app.DelayEditFieldLabel = uilabel(app.LidarDomeUIFigure);
+            app.DelayEditFieldLabel.HorizontalAlignment = 'right';
+            app.DelayEditFieldLabel.Position = [44 111 52 22];
+            app.DelayEditFieldLabel.Text = 'Delay';
+
+            % Create DelayEditField
+            app.DelayEditField = uieditfield(app.LidarDomeUIFigure, 'numeric');
+            app.DelayEditField.Tooltip = {'Time in tenths of a second till start of first frame'};
+            app.DelayEditField.Position = [110 111 54 22];
+
+            % Create PcapFileEditField
+            app.PcapFileEditField = uieditfield(app.LidarDomeUIFigure, 'text');
+            app.PcapFileEditField.HorizontalAlignment = 'center';
+            app.PcapFileEditField.Position = [96 262 455 22];
+
+            % Create PointstoKeepDropDownLabel
+            app.PointstoKeepDropDownLabel = uilabel(app.LidarDomeUIFigure);
+            app.PointstoKeepDropDownLabel.HorizontalAlignment = 'right';
+            app.PointstoKeepDropDownLabel.Position = [396 184 84 22];
+            app.PointstoKeepDropDownLabel.Text = 'Points to Keep';
+
+            % Create PointstoKeepDropDown
+            app.PointstoKeepDropDown = uidropdown(app.LidarDomeUIFigure);
+            app.PointstoKeepDropDown.Items = {'All', 'Positive', 'Negative'};
+            app.PointstoKeepDropDown.Tooltip = {'Default Negative. Use ALL for displaying A2 error'};
+            app.PointstoKeepDropDown.Position = [495 184 100 22];
+            app.PointstoKeepDropDown.Value = 'Negative';
+
+            % Create BandstoKeepDropDownLabel
+            app.BandstoKeepDropDownLabel = uilabel(app.LidarDomeUIFigure);
+            app.BandstoKeepDropDownLabel.HorizontalAlignment = 'right';
+            app.BandstoKeepDropDownLabel.Position = [396 150 84 22];
+            app.BandstoKeepDropDownLabel.Text = 'Bands to Keep';
+
+            % Create BandstoKeepDropDown
+            app.BandstoKeepDropDown = uidropdown(app.LidarDomeUIFigure);
+            app.BandstoKeepDropDown.Items = {'All', 'First,Last', 'Middle'};
+            app.BandstoKeepDropDown.Tooltip = {'Scan is divided in section. Pick parts of scan to keep'};
+            app.BandstoKeepDropDown.Position = [495 150 100 22];
+            app.BandstoKeepDropDown.Value = 'All';
+
+            % Create SubsampleEditFieldLabel
+            app.SubsampleEditFieldLabel = uilabel(app.LidarDomeUIFigure);
+            app.SubsampleEditFieldLabel.HorizontalAlignment = 'right';
+            app.SubsampleEditFieldLabel.Position = [274 70 65 22];
+            app.SubsampleEditFieldLabel.Text = 'Subsample';
+
+            % Create SubsampleEditField
+            app.SubsampleEditField = uieditfield(app.LidarDomeUIFigure, 'numeric');
+            app.SubsampleEditField.Tooltip = {'Subsamplingn in [m] / Set to 0 to keep all the values'};
+            app.SubsampleEditField.Position = [354 70 42 22];
+
+            % Create RunButton
+            app.RunButton = uibutton(app.LidarDomeUIFigure, 'push');
+            app.RunButton.ButtonPushedFcn = createCallbackFcn(app, @RunButtonPushed, true);
+            app.RunButton.Position = [451 346 100 22];
+            app.RunButton.Text = 'Run';
+
+            % Create ProgressField
+            app.ProgressField = uieditfield(app.LidarDomeUIFigure, 'text');
+            app.ProgressField.HorizontalAlignment = 'center';
+            app.ProgressField.Position = [110 33 286 22];
+            app.ProgressField.Value = 'Load PCAP File';
+
+            % Create LidarDome360Label
+            app.LidarDome360Label = uilabel(app.LidarDomeUIFigure);
+            app.LidarDome360Label.HorizontalAlignment = 'center';
+            app.LidarDome360Label.FontSize = 16;
+            app.LidarDome360Label.FontWeight = 'bold';
+            app.LidarDome360Label.Position = [265 405 124 22];
+            app.LidarDome360Label.Text = 'Lidar Dome 360';
+
+            % Create SelectLidarFirstLabel
+            app.SelectLidarFirstLabel = uilabel(app.LidarDomeUIFigure);
+            app.SelectLidarFirstLabel.VerticalAlignment = 'bottom';
+            app.SelectLidarFirstLabel.FontSize = 14;
+            app.SelectLidarFirstLabel.Position = [92 408 100 19];
+            app.SelectLidarFirstLabel.Text = 'Select Lidar';
+
+            % Create SelectLidarDropDown
+            app.SelectLidarDropDown = uidropdown(app.LidarDomeUIFigure);
+            app.SelectLidarDropDown.Items = {'VLP16', 'VLP32C', 'OUSTER'};
+            app.SelectLidarDropDown.ValueChangedFcn = createCallbackFcn(app, @LidarDropDownValueChanged, true);
+            app.SelectLidarDropDown.Tooltip = {'Select your Lidar Version'};
+            app.SelectLidarDropDown.Position = [92 380 100 22];
+            app.SelectLidarDropDown.Value = 'VLP32C';
+
+            % Create DirectionDropDownLabel
+            app.DirectionDropDownLabel = uilabel(app.LidarDomeUIFigure);
+            app.DirectionDropDownLabel.HorizontalAlignment = 'right';
+            app.DirectionDropDownLabel.Position = [48 70 52 22];
+            app.DirectionDropDownLabel.Text = 'Direction';
+
+            % Create DirectionDropDown
+            app.DirectionDropDown = uidropdown(app.LidarDomeUIFigure);
+            app.DirectionDropDown.Items = {'Clockwise', 'Counterclockwise'};
+            app.DirectionDropDown.Tooltip = {'Select direction Lidar Rotates'};
+            app.DirectionDropDown.Position = [115 70 142 22];
+            app.DirectionDropDown.Value = 'Clockwise';
+
+            % Create LoadJSONfileButton
+            app.LoadJSONfileButton = uibutton(app.LidarDomeUIFigure, 'push');
+            app.LoadJSONfileButton.ButtonPushedFcn = createCallbackFcn(app, @LoadJSONfileButtonPushed, true);
+            app.LoadJSONfileButton.Tooltip = {'Select Ouster Calibration File'};
+            app.LoadJSONfileButton.Position = [92 340 100 22];
+            app.LoadJSONfileButton.Text = 'Load JSON file';
+
+            % Create StopButton
+            app.StopButton = uibutton(app.LidarDomeUIFigure, 'push');
+            app.StopButton.ButtonPushedFcn = createCallbackFcn(app, @StopButtonPushed, true);
+            app.StopButton.Position = [451 302 100 23];
+            app.StopButton.Text = 'Stop';
+
+            % Create DisplayDropDownLabel
+            app.DisplayDropDownLabel = uilabel(app.LidarDomeUIFigure);
+            app.DisplayDropDownLabel.HorizontalAlignment = 'right';
+            app.DisplayDropDownLabel.Position = [436 111 44 22];
+            app.DisplayDropDownLabel.Text = 'Display';
+
+            % Create DisplayDropDown
+            app.DisplayDropDown = uidropdown(app.LidarDomeUIFigure);
+            app.DisplayDropDown.Items = {'All Cycles', 'First Cycle', 'None'};
+            app.DisplayDropDown.Tooltip = {'Select to preview Point Cloud'};
+            app.DisplayDropDown.Position = [495 111 100 22];
+            app.DisplayDropDown.Value = 'All Cycles';
+
+            % Create deNoiseDropDownLabel
+            app.deNoiseDropDownLabel = uilabel(app.LidarDomeUIFigure);
+            app.deNoiseDropDownLabel.HorizontalAlignment = 'right';
+            app.deNoiseDropDownLabel.Position = [431 70 49 22];
+            app.deNoiseDropDownLabel.Text = 'deNoise';
+
+            % Create deNoiseDropDown
+            app.deNoiseDropDown = uidropdown(app.LidarDomeUIFigure);
+            app.deNoiseDropDown.Items = {'Low', 'High', 'None'};
+            app.deNoiseDropDown.Tooltip = {'Level of Applied Noise Reduction'};
+            app.deNoiseDropDown.Position = [495 70 100 22];
+            app.deNoiseDropDown.Value = 'High';
+
+            % Create ExportDropDownLabel
+            app.ExportDropDownLabel = uilabel(app.LidarDomeUIFigure);
+            app.ExportDropDownLabel.HorizontalAlignment = 'right';
+            app.ExportDropDownLabel.Position = [440 33 40 22];
+            app.ExportDropDownLabel.Text = 'Export';
+
+            % Create ExportDropDown
+            app.ExportDropDown = uidropdown(app.LidarDomeUIFigure);
+            app.ExportDropDown.Items = {'Singles', 'Merged'};
+            app.ExportDropDown.Tooltip = {'Single sliced files or one Merged file'};
+            app.ExportDropDown.Position = [495 33 100 22];
+            app.ExportDropDown.Value = 'Singles';
+
+            % Show the figure after all components are created
+            app.LidarDomeUIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = Lidar_Dome_360
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.LidarDomeUIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @startupFcn)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.LidarDomeUIFigure)
+        end
+    end
+end
