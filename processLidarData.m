@@ -260,31 +260,35 @@ else  % Alignment correction as a function of motor speed (y-axis) (velodyne)
 end
 
 % Alpha_1 correction (Y-axis)
-%disp('Applying Alpha_1 correction...'); % <-- Display message for Alpha_1 correction
 A1 = [1 0 0 0; 0 cosd(alpha_1) sind(alpha_1) 0 ; ...
     0 -sind(alpha_1) cosd(alpha_1) 0 ; 0 0 0 1];
 
 % Alpha_2 correction (z-axis)
-%disp('Applying Alpha_2 correction...'); % <-- Display message for Alpha_2 correction
 A2 =  [cosd(alpha_2) sind(alpha_2) 0 0; ...
     -sind(alpha_2) cosd(alpha_2) 0 0; 0 0 1 0; 0 0 0 1];
 
-% R correction to translate along the z-axis (velodyne and ouster)
-%disp('Applying R correction...'); % <-- Display message for R correction
-T = [1 0 0 0; 0 1 0 0; 0 0 1 0; 0 0 R 1];
+% R offset correction to translate away from rotation axis (velodyne and ouster)
+if puck == 3 
+    T = [1 0 0 0; 0 1 0 R; 0 0 1 0; 0 0 0 1];  % Ouster optical center correction in meters offset by 0.02303 in the positive Y-direction relative to the X-axis
+else
+    T = [1 0 0 R; 0 1 0 0; 0 0 1 0; 0 0 0 1];  % Velodyne optical center correction in meters offset by 0.0424 in the positive X direction relative to the Y-axis
+end    
 
 % Speed adjustement
 if puck == 3 % Speed adjustment (x-axis) (ouster)
-    %disp('Applying Speed adjustment for OUSTER...'); % <-- Display message for OUSTER speed adjustment
-    T4 = [cosd(theta3) 0 -sind(theta3) 0; 0 1 0 0; sind(theta3) 0 cosd(theta3) 0; 0 0 0 1];
+    %T4 = [cosd(theta3) 0 -sind(theta3) 0; 0 1 0 0; sind(theta3) 0 cosd(theta3) 0; 0 0 0 1];
+    T4 = [1 0 0 0;
+      0 cosd(theta3) -sind(theta3) 0;
+      0 sind(theta3) cosd(theta3) 0;
+      0 0 0 1];
 else % Speed adjustement (velodyne)
-    %disp('Applying Speed adjustment for VELODYNE...'); % <-- Display message for VELODYNE speed adjustment
-    T4 = [cosd(theta3) sind(theta3) 0 0; ...
-        -sind(theta3) cosd(theta3) 0 0; 0 0 1 0; 0 0 0 1];
+    T4 = [cosd(theta3) sind(theta3) 0 0;
+      -sind(theta3) cosd(theta3) 0 0;
+      0 0 1 0;
+      0 0 0 1];    
 end
 
 % Apply transformation
-%disp('Applying transformations to point cloud...');
 
 % Start with the original point cloud
 curr_img = ptCloudIn;
@@ -310,7 +314,6 @@ tform = affinetform3d(T);
 Cloud{idx} = pctransform(curr_img, tform);  % Final transformed cloud saved in the cell
 
 s = s + 1; % count update
-%disp('Transformation complete!'); % <-- Display message at the end of Transformation
     end
 
 %% Initialisation of export parameters
@@ -547,7 +550,6 @@ if pos2 == 0 && (iiii == 1 || iiii == 16 || iiii == 32) || ...
    pos2 == 2 && (iiii == 8 || iiii == 16)
     % Define the filename
     filename = sprintf('%s_%s_%d.ply', filename_cycle_prefix, output_file_name, iiii);
-    %filename = sprintf('%s_%d.ply', output_file_name, iiii);
     % Save the current band
     pcwrite(PC_Final1, fullfile(output, filename), 'PLYFormat', 'binary');
 end
